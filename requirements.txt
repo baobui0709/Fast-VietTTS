@@ -25,3 +25,5 @@ gradio>=4.0.0
 # Utils
 tqdm>=4.66.0
 huggingface_hub>=0.23.0
+
+soe-vinorm
