@@ -50,52 +50,37 @@ class FastVietTTS:
         sentence_pause_ms: int = 500,
         crossfade_ms: int = 50,
     ) -> torch.Tensor:
-        """Generate speech audio tensor shape (1, N) at 24000 Hz."""
+        """Generate speech using original ViterBox pipeline with reference cache."""
         if not text or not text.strip():
             raise ValueError("text must not be empty")
 
         if audio_prompt and not os.path.exists(audio_prompt):
             raise FileNotFoundError(f"audio_prompt not found: {audio_prompt}")
 
-        text = self.text_processor.normalize(text)
-        chunks = self.text_processor.split_chunks(text, max_chars=150)
+        try:
+            with torch.inference_mode():
+                prepared_prompt = self._ensure_reference_conditioning(
+                    audio_prompt,
+                    exaggeration,
+                )
+                wav = self._generate_one(
+                    text=text.strip(),
+                    language=language,
+                    audio_prompt=prepared_prompt,
+                    exaggeration=exaggeration,
+                    cfg_weight=cfg_weight,
+                    temperature=temperature,
+                    top_p=top_p,
+                    repetition_penalty=repetition_penalty,
+                    sentence_pause_ms=sentence_pause_ms,
+                    crossfade_ms=crossfade_ms,
+                )
+        except torch.cuda.OutOfMemoryError as exc:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            raise RuntimeError("CUDA out of memory. Try shorter text or CPU mode.") from exc
 
-        if not chunks:
-            return torch.zeros(1, 0)
-
-        ref_path = self._cache_reference(audio_prompt) if audio_prompt else None
-        audio_parts = []
-
-        for idx, chunk in enumerate(chunks):
-            try:
-                with torch.inference_mode():
-                    wav = self._generate_one(
-                        text=chunk,
-                        language=language,
-                        audio_prompt=ref_path,
-                        exaggeration=exaggeration,
-                        cfg_weight=cfg_weight,
-                        temperature=temperature,
-                        top_p=top_p,
-                        repetition_penalty=repetition_penalty,
-                    )
-            except torch.cuda.OutOfMemoryError as exc:
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                raise RuntimeError(
-                    "CUDA out of memory. Try shorter text or disable compile_model."
-                ) from exc
-
-            audio_parts.append(self._ensure_audio(wav).cpu())
-
-            if sentence_pause_ms > 0 and idx < len(chunks) - 1:
-                audio_parts.append(add_silence(sentence_pause_ms, SAMPLE_RATE))
-
-        return crossfade_concat(
-            audio_parts,
-            crossfade_ms=crossfade_ms,
-            sample_rate=SAMPLE_RATE,
-        )
+        return self._ensure_audio(wav).cpu()
 
     def save_audio(self, audio: torch.Tensor, path: str) -> None:
         """Save audio tensor to WAV file."""
@@ -131,25 +116,38 @@ class FastVietTTS:
         except Exception as exc:
             raise RuntimeError(f"Failed to load ViterBox on {self.device}") from exc
 
+    def _ensure_reference_conditioning(
+        self,
+        audio_prompt: Optional[str],
+        exaggeration: float,
+    ) -> Optional[str]:
+        """Prepare ViterBox reference conditioning once per reference hash."""
+        if not audio_prompt:
+            return None
+
+        key = f"{self._file_md5(audio_prompt)}:{float(exaggeration):.4f}"
+
+        if self._ref_cache.get("active_key") != key:
+            self.model.prepare_conditionals(audio_prompt, exaggeration)
+            self._ref_cache["active_key"] = key
+            self._ref_cache[key] = True
+
+        return None
+
     def _generate_one(self, text: str, **kwargs: Any) -> torch.Tensor:
-        """Call underlying generate with fallback parameter handling."""
-        params = dict(kwargs)
-        params["text"] = text
-
-        try:
-            return self.model.generate(**params)
-        except TypeError:
-            params.pop("top_p", None)
-            params.pop("repetition_penalty", None)
-            params.pop("temperature", None)
-
-        try:
-            return self.model.generate(**params)
-        except TypeError:
-            audio_prompt = params.pop("audio_prompt", None)
-            if audio_prompt:
-                params["audio_prompt_path"] = audio_prompt
-            return self.model.generate(**params)
+        """Call original ViterBox.generate API."""
+        return self.model.generate(
+            text=text,
+            language=kwargs.get("language", "vi"),
+            audio_prompt=kwargs.get("audio_prompt"),
+            exaggeration=kwargs.get("exaggeration", 0.5),
+            cfg_weight=kwargs.get("cfg_weight", 0.5),
+            temperature=kwargs.get("temperature", 0.8),
+            top_p=kwargs.get("top_p", 1.0),
+            repetition_penalty=kwargs.get("repetition_penalty", 2.0),
+            sentence_pause_ms=kwargs.get("sentence_pause_ms", 500),
+            crossfade_ms=kwargs.get("crossfade_ms", 50),
+        )
 
     def _apply_fp16(self) -> None:
         """Apply FP16 to available modules."""
