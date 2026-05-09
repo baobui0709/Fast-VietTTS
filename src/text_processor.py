@@ -33,8 +33,13 @@ class TextProcessor:
         if not text:
             return ""
 
-        for short, full in self.ABBREVIATIONS.items():
-            text = text.replace(short, full)
+        for short, full in sorted(
+            self.ABBREVIATIONS.items(),
+            key=lambda item: len(item[0]),
+            reverse=True,
+        ):
+            pattern = r"(?<![A-Za-zÀ-ỹ0-9_-])" + re.escape(short) + r"(?![A-Za-zÀ-ỹ0-9_-])"
+            text = re.sub(pattern, full, text, flags=re.IGNORECASE)
 
         text = re.sub(r"\.\.\.+", "…", text)
         text = re.sub(r"--+", "—", text)
