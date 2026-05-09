@@ -1,0 +1,20 @@
+# Framework
+chatterbox-tts @ git+https://github.com/resemble-ai/chatterbox.git
+torch>=2.1.0
+torchaudio>=2.1.0
+
+# Audio
+librosa>=0.10.0
+soundfile>=0.12.0
+
+# Text processing
+num2words>=0.5.13
+underthesea>=6.8.0
+
+# UI
+gradio>=4.0.0
+
+# Utils
+numpy>=1.24.0
+tqdm>=4.66.0
+huggingface_hub>=0.23.0
