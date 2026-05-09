@@ -15,12 +15,7 @@ import tempfile, os
 
 os.environ["GRADIO_TEMP_DIR"] = tempfile.gettempdir() + "/my_gradio_tmp"
 os.makedirs(os.environ["GRADIO_TEMP_DIR"], exist_ok=True)
-import sys
 import time
-
-VITERBOX_SRC = "/content/TienHiep-TTS"
-if os.path.exists(VITERBOX_SRC) and VITERBOX_SRC not in sys.path:
-    sys.path.insert(0, VITERBOX_SRC)
 
 from src.engine import FastVietTTS
 

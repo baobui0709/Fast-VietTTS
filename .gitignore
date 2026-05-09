@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.gradio/
+.ipynb_checkpoints/
+*.zip
+*.tmp
+.DS_Store
