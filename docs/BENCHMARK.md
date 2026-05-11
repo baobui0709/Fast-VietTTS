@@ -1,60 +1,39 @@
 # Benchmark — Fast-VietTTS
 
-> Template benchmark. Kết quả đầy đủ sẽ được cập nhật sau Agent 6 / Notebook 04.
+## Summary
 
-## Environment
-
-| Item | Value |
-|---|---|
-| Runtime | Google Colab |
-| GPU | Tesla T4 |
-| Torch | 2.6.0+cu124 |
-| Torchaudio | 2.6.0+cu124 |
-| Model strategy | ViterBox fallback |
-| FP16 | Disabled |
-| Compile | Disabled for stability |
-
-## Compatibility Result
-
-`AnhTuan89/viterbox` không tương thích trực tiếp với Chatterbox-Turbo. Xem chi tiết tại:
+Các benchmark wrapper-level cho thấy bottleneck chính nằm ở:
 
 ```text
-docs/COMPAT_REPORT.md
+T3 inference / LlamaModel.forward autoregressive token-by-token
 ```
 
-## Initial Functional Test
+## Agent 12 reference cache
 
-| Test | Result |
-|---|---:|
-| Text | `Xin chào! Đây là kiểm tra Fast-VietTTS.` |
-| Output shape | `(1, 62640)` |
-| Audio duration | `2.61s` |
-| Inference elapsed | `3.48s` |
-| RTF | `1.33x` |
-| Status | Passed |
+Kết quả đáng giữ:
 
-## Benchmark Plan
+| Run | Elapsed |
+|---:|---:|
+| 1 | 14.00s |
+| 2 | 6.83s |
+| 3 | 7.54s |
 
-Notebook `notebooks/04_Benchmark.ipynb` sẽ benchmark:
+Speedup sau cache: khoảng `1.95x` cho cùng voice trong test ngắn.
 
-1. Text ngắn khoảng 50 ký tự.
-2. Text vừa khoảng 200 ký tự.
-3. Text dài khoảng 500 ký tự.
-4. Có / không reference audio.
-5. So sánh ViterBox fallback với các cấu hình tối ưu:
-   - baseline FP32
-   - optional `torch.compile`
-   - chunk size khác nhau
+## Agent 15 split strategy
 
-## Target
+`split_off` nhanh hơn nhẹ nhưng nghe kém tự nhiên hơn. Không giữ.
 
-| Hardware | Target RTF |
-|---|---:|
-| Colab T4 | `< 0.5` |
-| A100 | `< 0.2` |
+## Agent 18 alignment
 
-## Notes
+Tắt alignment analyzer tăng khoảng 4% ở medium/long. Không giữ.
 
-- Kết quả hiện tại chưa phải benchmark cuối.
-- FP16 bị tắt do lỗi dtype mismatch trong fallback mode.
-- Cần tối ưu tiếp nếu muốn đạt realtime.
+## Agent 19 output attentions
+
+`output_attentions=False` không nhanh hơn baseline trong test. Không giữ.
+
+## Practical conclusion
+
+- Giữ pipeline ViterBox gốc.
+- Giữ reference conditioning cache.
+- Muốn nhanh hơn nhiều cần model-level distillation/student.
